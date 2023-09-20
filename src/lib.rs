@@ -140,6 +140,11 @@
     variant_size_differences
 )]
 
+/// For surviving MSRV check only.
+mod unused_deps {
+    use lazy_static as _;
+}
+
 use std::{any::TypeId, fmt::Display, marker::PhantomData, ptr};
 
 use sealed::sealed;
