@@ -87,7 +87,7 @@ jobs:
 
       - run: cargo +nightly update -Z minimal-versions
 
-      - run: make test.cargo
+      - run: cargo check
 
   test:
     strategy:

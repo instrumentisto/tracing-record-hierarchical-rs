@@ -1,5 +1,5 @@
 `tracing-record-hierarchical` changelog
-==============================
+=======================================
 
 All user visible changes to this project will be documented in this file. This project uses [Semantic Versioning 2.0.0].
 
@@ -11,10 +11,11 @@ All user visible changes to this project will be documented in this file. This p
 
 ### Initially implemented
 
-- `HierarchicalRecord` implementation of `tracing_subscriber::Layer`. ([todo])
-- `SpanExt` trait extension for `tracing::Span`s. ([todo])
+- `HierarchicalRecord` implementation of `tracing_subscriber::Layer`. ([#1])
+- `SpanExt` trait extension for `tracing::Span`s. ([#1])
 
-[todo]: /../../commit/todo
+[#1]: /../../pull/1
+
 
 
 

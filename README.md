@@ -1,27 +1,24 @@
-tracing-record-hierarchical
-=======
+`tracing-record-hierarchical`
+=============================
 
 [![crates.io](https://img.shields.io/crates/v/tracing-record-hierarchical.svg "crates.io")](https://crates.io/crates/tracing-record-hierarchical)
-[![Rust 1.56+](https://img.shields.io/badge/rustc-1.56+-lightgray.svg "Rust 1.56+")](https://blog.rust-lang.org/2021/10/21/Rust-1.56.0.html)
-[![CI](https://github.com/instrumentisto/tracing-record-hierarchical/workflows/CI/badge.svg?branch=main "CI")](https://github.com/instrumentisto/tracing-record-hierarchical/actions?query=workflow%3ACI+branch%3Amain)
+[![Rust 1.70+](https://img.shields.io/badge/rustc-1.70+-lightgray.svg "Rust 1.70+")](https://blog.rust-lang.org/2023/06/01/Rust-1.70.0.html)
+[![CI](https://github.com/instrumentisto/tracing-record-hierarchical-rs/workflows/CI/badge.svg?branch=main "CI")](https://github.com/instrumentisto/tracing-record-hierarchical-rs/actions?query=workflow%3ACI+branch%3Amain)
 [![Rust docs](https://docs.rs/tracing-record-hierarchical/badge.svg "Rust docs")](https://docs.rs/tracing-record-hierarchical)
 
 [API Docs](https://docs.rs/tracing-record-hierarchical) |
-[Changelog](https://github.com/instrumentisto/tracing-record-hierarchical/blob/main/CHANGELOG.md)
+[Changelog](https://github.com/instrumentisto/tracing-record-hierarchical-rs/blob/main/CHANGELOG.md)
 
-Record parent's [`tracing`] span fields from inside child span's context.
+Record parent [`tracing::Span`] fields from inside child [`tracing::Span`]'s context.
 
 
 
 
 ## Motivation
 
-Dealing with the complex relationship in the hierarchy of nested [`Span`]s in
-`tracing` might become cumbersome. When faced with the need to record new value
-for a field of a [`Span`] _higher in the tree_, users have no choice but to
-refactor their code in some way to allow that. This includes:
+Dealing with the complex relationship in the hierarchy of nested [`Span`]s in [`tracing`] may become quite cumbersome. When faced with the need to record a new value for a field of a [`Span`] _higher in the tree_, users have no choice but to refactor their code in some way to allow that. This includes:
 
-1. Extracting [`record`][`Span::record`] out of the child [`Span`]:
+1. Extracting a [`Span::record`] out of the child [`Span`]:
    ```rust
    fn called_from_withing_a_span() {
        let id = 42;
@@ -32,12 +29,10 @@ refactor their code in some way to allow that. This includes:
        })
    }
    ```
-
-   This will not work when:
-   - There is another "layer" of spans between them;
-   - The value that needs to be recorded is computed in the function (you may
-     still be able to work around by returning from `in_scope` closure);
-   - The parent [`Span`] in question is in another crate you have no control of.
+   Which doesn't work when:
+   - There is another "layer" of [`Span`]s between them;
+   - The value that needs to be recorded is computed in the function (you may still be able to work around by returning from `in_scope` closure);
+   - The parent [`Span`] in question, or in another crate you have no control of.
 
 2. Bringing the parent [`Span`] to the child:
    ```rust
@@ -56,25 +51,21 @@ refactor their code in some way to allow that. This includes:
        parent_span.record("id", id);
    }
    ```
+   We had to construct a `parent` [`Span`] using `*_span!` macro and pass it to the child.
 
-   We had to construct `parent` [`Span`] using `*_span!` macro and pass it to
-   the child.
+Those workarounds are not ergonomic. Furthermore, in some cases cannot be used at all.
 
-Those workarounds are not ergonomic, if can be used at all in other cases.
 
 
 
 ## Overview
 
-This crate adds a [`HierarchicalRecord`] [`Layer`] and a [`SpanExt`] trait with
-the [`record_hierarchical`] method that can be used as a drop-in replacement for
-[`Span::record`].
+This crate adds a [`HierarchicalRecord`] [`Layer`] and a [`SpanExt`] trait with the [`record_hierarchical()`] method that can be used as a drop-in replacement for a [`Span::record`].
 
 
-## Usage
+### Usage
 
-Add the [`HierarchicalRecord`] layer to your [subscriber]:
-
+Add the [`HierarchicalRecord`] [`Layer`] to your [subscriber]:
 ```rust
 # use tracing_subscriber::prelude::*;
 use tracing_record_hierarchical::HierarchicalRecord;
@@ -86,14 +77,11 @@ fn init_tracing() {
 }
 ```
 
-When you were to use [`Span::record`] to record a value to a parent span's
-field, do [`record_hierarchical`], or a panicky version,
-[`must_record_hierarchical`], instead:
-
+Whenever you're to use a [`Span::record`] to record a value to a parent [`Span`]'s field, call the [`record_hierarchical()`] method instead, or a panicking [`must_record_hierarchical()`] version instead:
 ```rust
 use tracing_record_hierarchical::SpanExt as _;
 
-#[tracing::instrument(fields(my_field = tracing::field::Empty))]
+#[tracing::instrument(fields(foo = tracing::field::Empty))]
 fn foo() {
     bar();
 }
@@ -101,14 +89,14 @@ fn foo() {
 #[tracing::instrument]
 fn bar() {
     tracing::Span::current()
-        // This will walk the chain of spans from the span the method was called
-        // on (`current` in this example) to the "root" span. If some span in
-        // the chain has the field `my_field`, the value would be recorded 
-        // there. If none of the spans from firs to "root" have this field,
-        // panic will occur.
-        .must_record_hierarchical("my_field", 42);
+        // This will walk the chain of `Span`s from the `span` the method was
+        // called on (`current()` in this example) to the "root" `Span`. If
+        // some `Span` in the chain has the `foo` field, the provided value
+        // will be recorded there. If none of the `Span`s in the chain has this
+        // field, a panic will occur.
+        .must_record_hierarchical("foo", 42);
 }
-
+#
 # fn main() {
 #     use tracing_subscriber::prelude::*;
 #     use tracing_record_hierarchical::HierarchicalRecord;
@@ -124,7 +112,7 @@ fn bar() {
 
 ## License
 
-Copyright © 2022-2023 Instrumentisto Team, <https://github.com/instrumentisto>
+Copyright © 2023 Instrumentisto Team, <https://github.com/instrumentisto>
 
 Licensed under either of [Apache License, Version 2.0][APACHE] or [MIT license][MIT] at your option.
 
@@ -135,13 +123,14 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
 
 [`HierarchicalRecord`]: https://docs.rs/tracing-record-hierarchical/latest/tracing_record_hierarchical/struct.HierarchicalRecord.html
 [`Layer`]: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/layer/trait.Layer.html
-[`must_record_hierarchical`]: https://docs.rs/tracing-record-hierarchical/latest/tracing_record_hierarchical/trait.SpanExt.html#tymethod.must_record_hierarchical
-[`record_hierarchical`]: https://docs.rs/tracing-record-hierarchical/latest/tracing_record_hierarchical/trait.SpanExt.html#tymethod.record_hierarchical
+[`must_record_hierarchical()`]: https://docs.rs/tracing-record-hierarchical/latest/tracing_record_hierarchical/trait.SpanExt.html#tymethod.must_record_hierarchical
+[`record_hierarchical()`]: https://docs.rs/tracing-record-hierarchical/latest/tracing_record_hierarchical/trait.SpanExt.html#tymethod.record_hierarchical
 [`Span::record`]: https://docs.rs/tracing/latest/tracing/struct.Span.html#method.record
 [`Span`]: https://docs.rs/tracing/latest/tracing/struct.Span.html
 [`SpanExt`]: https://docs.rs/tracing-record-hierarchical/latest/tracing_record_hierarchical/trait.SpanExt.html
 [`tracing`]: https://docs.rs/tracing
-[subscriber]: https://docs.rs/tracing/latest/tracing/#subscribers
+[`tracing::Span`]: https://docs.rs/tracing/latest/tracing/struct.Span.html
+[subscriber]: https://docs.rs/tracing/latest/tracing#subscribers
 
-[APACHE]: https://github.com/instrumentisto/tracing-record-hierarchical/blob/main/LICENSE-APACHE
-[MIT]: https://github.com/instrumentisto/tracing-record-hierarchical/blob/main/LICENSE-MIT
+[APACHE]: https://github.com/instrumentisto/tracing-record-hierarchical-rs/blob/main/LICENSE-APACHE
+[MIT]: https://github.com/instrumentisto/tracing-record-hierarchical-rs/blob/main/LICENSE-MIT
