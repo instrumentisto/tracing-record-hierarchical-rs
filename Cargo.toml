@@ -2,7 +2,7 @@
 name = "tracing-record-hierarchical"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.56"
+rust-version = "1.59"
 description = "Record parent's span fields from inside child span's context."
 authors = ["Instrumentisto Team <developer@instrumentisto.com>"]
 license = "MIT OR Apache-2.0"
