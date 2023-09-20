@@ -139,8 +139,8 @@
     variant_size_differences
 )]
 
+/// For surviving MSRV check only.
 mod unused_deps {
-    // For surviving MSRV check only.
     use lazy_static as _;
     use syn as _;
 }
