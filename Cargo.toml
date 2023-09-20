@@ -1,0 +1,25 @@
+[package]
+name = "tracing-record-hierarchical"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.56"
+description = "Record parent's span fields from inside child span's context."
+authors = ["Instrumentisto Team <developer@instrumentisto.com>"]
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/tracing-record-hierarchical"
+homepage = "https://github.com/instrumentisto/tracing-record-hierarchical"
+repository = "https://github.com/instrumentisto/tracing-record-hierarchical"
+readme = "README.md"
+keywords = ["tracing", "span", "parent", "record", "subscriber"]
+categories = ["development-tools::debugging", "development-tools::profiling"]
+include = ["/src/", "/Cargo.toml", "/CHANGELOG.md", "/LICENSE-APACHE", "/LICENSE-MIT", "/README.md"]
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--generate-link-to-definition"]
+
+[dependencies]
+tracing = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", features = ["registry"], default-features = false }
+
+[dev-dependencies]
+tracing = { version = "0.1", features = ["attributes", "std"], default-features = false }
