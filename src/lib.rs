@@ -2,12 +2,13 @@
 // to become proper intra-doc links in Rust docs.
 //! [`HierarchicalRecord`]: HierarchicalRecord
 //! [`Layer`]: Layer
-//! [`must_record_hierarchical`]: SpanExt::must_record_hierarchical
-//! [`record_hierarchical`]: SpanExt::record_hierarchical
+//! [`must_record_hierarchical()`]: SpanExt::must_record_hierarchical
+//! [`record_hierarchical()`]: SpanExt::record_hierarchical
 //! [`Span::record`]: Span::record()
-//! [`Span`]: Span
+//! [`Span`]: tracing::Span
 //! [`SpanExt`]: SpanExt
 //! [`tracing`]: tracing
+//! [`tracing::Span`]: tracing::Span
 //! [subscriber]: tracing#subscribers
 #![doc = include_str!("../README.md")]
 #![deny(
@@ -139,24 +140,19 @@
     variant_size_differences
 )]
 
-/// For surviving MSRV check only.
-mod unused_deps {
-    use lazy_static as _;
-    use syn as _;
-}
-
 use std::{any::TypeId, fmt::Display, marker::PhantomData, ptr};
 
+use sealed::sealed;
 use tracing::{self as log, field, span, Dispatch, Metadata, Span, Subscriber};
 use tracing_subscriber::{registry::LookupSpan, Layer, Registry};
 
 /// Extension of a [`tracing::Span`] providing more ergonomic handling of
 /// [`tracing::Span::record`]s.
+#[sealed]
 pub trait SpanExt {
-    /// Same as [`tracing::Span::record()`], but ensuring that this
-    /// `field` `value` will be written in some [`tracing::Span`] with the
-    /// provided `field` by trying to write it in the [`tracing::Span`]'s
-    /// parent otherwise.
+    /// Same as [`tracing::Span::record()`], but ensures that the provided
+    /// `field`'s `value` will be written into the first [`tracing::Span`] with
+    /// this `field` up by hierarchy.
     fn record_hierarchical<Q, V>(&self, field: &Q, value: V) -> &Self
     where
         Q: field::AsField + Display + ?Sized,
@@ -166,14 +162,15 @@ pub trait SpanExt {
     ///
     /// # Panics
     ///
-    /// In case none of the [`tracing::Span`]s in the chain to the root span
-    /// have the `field`.
+    /// In case none of [`tracing::Span`]s in the hierarchy has the provided
+    /// `field`.
     fn must_record_hierarchical<Q, V>(&self, field: &Q, value: V) -> &Self
     where
         Q: field::AsField + Display + ?Sized,
         V: field::Value;
 }
 
+#[sealed]
 impl SpanExt for Span {
     fn record_hierarchical<Q, V>(&self, field: &Q, value: V) -> &Self
     where
@@ -194,15 +191,9 @@ impl SpanExt for Span {
     }
 }
 
-/// Records that the field described by `field` in the `span` has the value
-/// `value`.
-///
-/// If the `field` is not found in this `span`'s [`metadata`], walks it's
-/// parents and tries to record the `field` in each of them, until "match" is
-/// found or span has no parent (root span is reached).
-///
-/// [`metadata`]: Span::metadata
-pub(crate) fn record<Q, V>(span: &Span, field: &Q, value: V, panic: bool)
+/// Records the provided `value` to the `field` of the provided [`Span`] if it
+/// has the one, otherwise tries to record it to its parent [`Span`].
+fn record<Q, V>(span: &Span, field: &Q, value: V, panic: bool)
 where
     Q: field::AsField + Display + ?Sized,
     V: field::Value,
@@ -214,20 +205,21 @@ where
     }
 }
 
-/// Walks the parents of the `span` and tries to record a field in each of them
-/// in the chain, until "match" is found or span has no parent (root  span is
-/// reached).
+/// Walks up the parents' hierarchy of the provided [`Span`] and tries to record
+/// the provided `value` into the `field` of the first [`Span`] having it, or
+/// the "root" [`Span`] is reached.
 fn record_parent<Q, V>(span: &Span, field: &Q, value: V, panic: bool)
 where
     Q: field::AsField + Display + ?Sized,
     V: field::Value,
 {
     _ = span.with_subscriber(|(id, dispatch)| {
-        let reg =
-            dispatch.downcast_ref::<Registry>().expect("subscriber not found");
-        let ctx = dispatch
-            .downcast_ref::<WithContext>()
-            .expect("Add `HierarchicalRecord` `Layer` to your subscriber");
+        let reg = dispatch
+            .downcast_ref::<Registry>()
+            .expect("`tracing::Subscriber` not found");
+        let ctx = dispatch.downcast_ref::<WithContext>().expect(
+            "add `HierarchicalRecord` `Layer` to your `tracing::Subscriber`",
+        );
 
         if let Some(span) = reg.span(id) {
             let parent = span.scope().find_map(|parent| {
@@ -239,7 +231,7 @@ where
                             .as_field(meta)
                             .map(|field| (parent_id, meta, field))
                     },
-                    &|| format!("{field}"),
+                    &|| field.to_string(),
                     panic,
                 )
             });
@@ -257,15 +249,15 @@ where
     });
 }
 
-/// A shortcut for [`tracing::Span`]'s `'static` [`Metadata`].
+/// Shortcut for a [`tracing::Span`]'s `'static` [`Metadata`].
 type Meta = &'static Metadata<'static>;
 
-/// A shortcut for [`HierarchicalRecord::with_context`]'s callback function
+/// Shortcut for [`HierarchicalRecord::with_context`]'s callback function
 /// signature.
 type WithContextCallback<'f> =
     &'f dyn Fn(span::Id, Meta) -> Option<(span::Id, Meta, field::Field)>;
 
-/// A shortcut for [`HierarchicalRecord::with_context`] signature.
+/// Shortcut for a [`HierarchicalRecord::with_context`] method signature.
 type WithContextFn = fn(
     dispatch: &Dispatch,
     id: &span::Id,
@@ -276,14 +268,15 @@ type WithContextFn = fn(
 
 /// Type-erased [`Layer`]'s context.
 ///
-/// This function "remembers" the type of the subscriber so that we can downcast
-/// to something aware of them without knowing those types at the callsite.
+/// This function "remembers" the type of the subscriber, so that we can
+/// downcast to something aware of them without knowing those types at the
+/// call-site.
 #[derive(Debug)]
 struct WithContext(WithContextFn);
 
 impl WithContext {
-    /// This function allows a function to be called in the context of the
-    /// "remembered" subscriber.
+    /// Allows a function to be called in the context of the "remembered"
+    /// subscriber.
     fn record_hierarchical(
         &self,
         dispatch: &Dispatch,
@@ -296,15 +289,15 @@ impl WithContext {
     }
 }
 
-/// A [`Layer`] that helps [`field`]s find their corresponding [`Span`] in the
-/// chain of [`Span`]s.
+/// [`Layer`] that helps [`field`]s find their corresponding [`Span`] in the
+/// hierarchy of [`Span`]s.
 #[derive(Debug)]
 pub struct HierarchicalRecord<S> {
     /// Type-erased [`Layer`]'s context.
     ctx: WithContext,
 
-    /// [`Subscriber`] marker.
-    _marker: PhantomData<fn(S)>,
+    /// [`Subscriber`]'s type.
+    _subscriber: PhantomData<fn(S)>,
 }
 
 impl<S> Default for HierarchicalRecord<S>
@@ -320,47 +313,49 @@ impl<S> HierarchicalRecord<S>
 where
     S: for<'span> LookupSpan<'span> + Subscriber,
 {
-    /// Creates new [`HierarchicalRecord`].
+    /// Creates a new [`HierarchicalRecord`].
     #[must_use]
     pub fn new() -> Self {
-        Self { ctx: WithContext(Self::with_context), _marker: PhantomData }
+        Self { ctx: WithContext(Self::with_context), _subscriber: PhantomData }
     }
 
-    /// Function saved and called by [`WithContext`] at the callsite.
+    /// Function saved and called by a [`WithContext`] at the call-site.
     #[allow(clippy::unwrap_in_result)]
     fn with_context(
         dispatch: &Dispatch,
         id: &span::Id,
         f: WithContextCallback<'_>,
         field: &dyn Fn() -> String,
-        panic: bool,
+        do_panic: bool,
     ) -> Option<(span::Id, Meta, field::Field)> {
-        let subscriber =
-            dispatch.downcast_ref::<S>().expect("subscriber not found");
-        let span = subscriber.span(id).expect("unknown span");
+        let subscriber = dispatch
+            .downcast_ref::<S>()
+            .expect("`tracing::Subscriber` not found");
+        let span = subscriber.span(id).expect("unknown `tracing::Span`");
 
         #[allow(clippy::option_if_let_else)]
         if let Some(parent) = span.parent() {
             f(parent.id(), parent.metadata())
         } else {
             // `Span` wants to record a field but has no parents. This means
-            // that we walked entire chain of `Span`s to the root, yet this
-            // field did not find it's corresponding `Span`. We know that
-            // because otherwise the iteration in `record_parent` would end, and
-            // this function would not be called again anymore, yet it is.
-            // Nothing to do but report the error.
+            // that we walked the entire hierarchy of `Span`s to the root, yet
+            // this field did not find it's corresponding `Span`. We know that,
+            // because otherwise the iteration in `record_parent()` would end,
+            // and this function would not be called again anymore, yet it is.
+            // Nothing to do, but report the error.
 
             let meta = span.metadata();
             let field = field();
+
             // We log and then panic to avoid situation, when we get double
             // panic without any info.
             log::error!(
-                "Span(id={id:?}, meta={meta:?}) doesn't have `{field}` field"
+                "`Span(id={id:?}, meta={meta:?})` doesn't have `{field}` field"
             );
-            panic.then(|| {
+            do_panic.then(|| {
                 panic!(
-                    "Span(id={id:?}, meta={meta:?}) doesn't have `{field}` \
-                     field"
+                    "`Span(id={id:?}, meta={meta:?})` doesn't have `{field}` \
+                     field",
                 )
             })
         }
@@ -388,7 +383,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+mod spec {
     use super::*;
 
     fn with_subscriber(f: impl FnOnce()) {
@@ -408,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    fn records_in_parent() {
+    fn records_into_parent_span() {
         with_subscriber(|| {
             tracing::info_span!("parent", field = field::Empty).in_scope(
                 || {
@@ -422,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn records_in_parent_must() {
+    fn must_records_into_parent_span() {
         with_subscriber(|| {
             tracing::info_span!("parent", field = field::Empty).in_scope(
                 || {
@@ -436,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    fn records_in_nested_parent_must() {
+    fn must_records_into_toplevel_parent_span() {
         with_subscriber(|| {
             tracing::info_span!("grand-grandparent", field = field::Empty)
                 .in_scope(|| {
@@ -453,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn records_in_nested_parent_must_2() {
+    fn must_records_into_intermediate_parent_span() {
         with_subscriber(|| {
             tracing::info_span!("grand-grandparent").in_scope(|| {
                 tracing::info_span!("grandparent", field = field::Empty)
@@ -470,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn does_not_panic_on_missing_field() {
+    fn no_panic_on_missing_field() {
         with_subscriber(|| {
             tracing::info_span!("parent", abc = field::Empty).in_scope(|| {
                 tracing::info_span!("child").in_scope(|| {
@@ -481,8 +476,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = r#"doesn't have `field` field"#]
-    fn panics_on_missing_field_must() {
+    #[should_panic = "doesn't have `field` field"]
+    fn must_panics_on_missing_field() {
         with_subscriber(|| {
             tracing::info_span!("parent", abc = field::Empty).in_scope(|| {
                 tracing::info_span!("child").in_scope(|| {
@@ -494,8 +489,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "Add `HierarchicalRecord` `Layer` to your subscriber"]
-    fn panics_no_layer() {
+    #[should_panic = "add `HierarchicalRecord` `Layer` to your \
+                      `tracing::Subscriber`"]
+    fn panics_when_no_layer() {
         let subscriber = tracing_subscriber::registry();
 
         tracing::subscriber::with_default(subscriber, || {

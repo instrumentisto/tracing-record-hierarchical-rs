@@ -89,11 +89,11 @@ fn foo() {
 #[tracing::instrument]
 fn bar() {
     tracing::Span::current()
-        // This will walk the chain of `Span`s from the `span` the method was
-        // called on (`current()` in this example) to the "root" `Span`. If
-        // some `Span` in the chain has the `foo` field, the provided value
-        // will be recorded there. If none of the `Span`s in the chain has this
-        // field, a panic will occur.
+        // This walks up the hierarchy of `Span`s from the `span` the method 
+        // was called on (`current()` in this example) to the "root" `Span`. 
+        // If some `Span` in the hierarchy has the `foo` field, the provided 
+        // value will be recorded there. If none of the `Span`s in the 
+        // hierarchy has this field, a panic will occur.
         .must_record_hierarchical("foo", 42);
 }
 #

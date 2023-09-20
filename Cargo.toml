@@ -18,6 +18,7 @@ include = ["/src/", "/Cargo.toml", "/CHANGELOG.md", "/LICENSE-APACHE", "/LICENSE
 rustdoc-args = ["--generate-link-to-definition"]
 
 [dependencies]
+sealed = "0.5"
 tracing = { version = "0.1.37", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["registry"], default-features = false }
 
