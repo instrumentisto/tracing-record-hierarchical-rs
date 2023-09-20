@@ -139,6 +139,12 @@
     variant_size_differences
 )]
 
+mod unused_deps {
+    // For surviving MSRV check only.
+    use lazy_static as _;
+    use syn as _;
+}
+
 use std::{any::TypeId, fmt::Display, marker::PhantomData, ptr};
 
 use tracing::{self as log, field, span, Dispatch, Metadata, Span, Subscriber};

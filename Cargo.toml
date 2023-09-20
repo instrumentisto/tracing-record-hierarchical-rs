@@ -18,8 +18,12 @@ include = ["/src/", "/Cargo.toml", "/CHANGELOG.md", "/LICENSE-APACHE", "/LICENSE
 rustdoc-args = ["--generate-link-to-definition"]
 
 [dependencies]
-tracing = { version = "0.1", default-features = false }
+tracing = { version = "^0.1.36", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["registry"], default-features = false }
+
+# Not realy used, for surviving MSRV check only.
+lazy_static = "^1.1.0"
+syn = { version = "^1.0.45" }
 
 [dev-dependencies]
 tracing = { version = "0.1", features = ["attributes", "std"], default-features = false }
