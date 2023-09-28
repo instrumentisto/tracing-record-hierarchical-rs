@@ -32,7 +32,7 @@ Dealing with the complex relationship in the hierarchy of nested [`Span`]s in [`
    Which doesn't work when:
    - There is another "layer" of [`Span`]s between them;
    - The value that needs to be recorded is computed in the function (you may still be able to work around by returning from `in_scope` closure);
-   - The parent [`Span`] in question, or in another crate you have no control of.
+   - The parent [`Span`] is in another crate you have no control of.
 
 2. Bringing the parent [`Span`] to the child:
    ```rust
@@ -72,7 +72,7 @@ use tracing_record_hierarchical::HierarchicalRecord;
 
 fn init_tracing() {
     tracing_subscriber::registry()
-        .with(HierarchicalRecord::new())
+        .with(HierarchicalRecord::default())
         .init();
 }
 ```
@@ -101,7 +101,7 @@ fn bar() {
 #     use tracing_subscriber::prelude::*;
 #     use tracing_record_hierarchical::HierarchicalRecord;
 # 
-#     tracing_subscriber::registry().with(HierarchicalRecord::new()).init();
+#     tracing_subscriber::registry().with(HierarchicalRecord::default()).init();
 # 
 #     foo();
 # }
