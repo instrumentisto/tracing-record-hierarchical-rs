@@ -21,6 +21,7 @@
 )]
 #![forbid(non_ascii_idents, unsafe_code)]
 #![warn(
+    clippy::absolute_paths,
     clippy::as_conversions,
     clippy::as_ptr_cast_mut,
     clippy::assertions_on_result_states,
@@ -40,6 +41,7 @@
     clippy::empty_structs_with_brackets,
     clippy::equatable_if_let,
     clippy::exit,
+    clippy::expect_used,
     clippy::fallible_impl_from,
     clippy::filetype_is_file,
     clippy::float_cmp_const,
@@ -68,6 +70,7 @@
     clippy::mutex_atomic,
     clippy::mutex_integer,
     clippy::needless_collect,
+    clippy::needless_pass_by_ref_mut,
     clippy::needless_raw_strings,
     clippy::nonstandard_macro_braces,
     clippy::option_if_let_else,
@@ -80,17 +83,20 @@
     clippy::pub_without_shorthand,
     clippy::rc_buffer,
     clippy::rc_mutex,
+    clippy::readonly_write_lock,
     clippy::redundant_clone,
     clippy::redundant_type_annotations,
     clippy::ref_patterns,
     clippy::rest_pat_in_fully_bound_structs,
     clippy::same_name_method,
     clippy::semicolon_inside_block,
+    clippy::shadow_unrelated,
     clippy::significant_drop_in_scrutinee,
     clippy::significant_drop_tightening,
     clippy::str_to_string,
     clippy::string_add,
     clippy::string_lit_as_bytes,
+    clippy::string_lit_chars_any,
     clippy::string_slice,
     clippy::string_to_string,
     clippy::suboptimal_flops,
@@ -102,7 +108,6 @@
     clippy::transmute_undefined_repr,
     clippy::trivial_regex,
     clippy::try_err,
-    clippy::tuple_array_conversions,
     clippy::undocumented_unsafe_blocks,
     clippy::unimplemented,
     clippy::unnecessary_safety_comment,
@@ -119,13 +124,11 @@
     clippy::verbose_file_reads,
     clippy::wildcard_enum_match_arm,
     future_incompatible,
-    invalid_reference_casting,
     let_underscore_drop,
     meta_variable_misuse,
     missing_copy_implementations,
     missing_debug_implementations,
     missing_docs,
-    noop_method_call,
     semicolon_in_expressions_from_macros,
     unreachable_pub,
     unused_crate_dependencies,
@@ -218,6 +221,7 @@ where
     V: field::Value,
 {
     _ = span.with_subscriber(|(id, dispatch)| {
+        #[allow(clippy::expect_used)] // intentional
         let ctx = dispatch.downcast_ref::<HierarchicalRecord>().expect(
             "add `HierarchicalRecord` `Layer` to your `tracing::Subscriber`",
         );
@@ -226,12 +230,12 @@ where
             dispatch,
             id,
             &|meta: Meta| field.as_field(meta),
-            &|id, meta, field| {
+            &|span_id, meta, field_name| {
                 let value: &dyn field::Value = &value;
                 dispatch.record(
-                    id,
+                    span_id,
                     &span::Record::new(
-                        &meta.fields().value_set(&[(&field, Some(value))]),
+                        &meta.fields().value_set(&[(&field_name, Some(value))]),
                     ),
                 );
             },
@@ -301,13 +305,13 @@ where
                 parent.scope().find_map(|s| find_field(s.metadata()))
             });
 
-            #[allow(clippy::option_if_let_else)]
-            if let Some(field) = field {
-                record(&span.id(), span.metadata(), field);
-                None
-            } else {
-                Some((span.id(), span.metadata()))
-            }
+            field.map_or_else(
+                || Some((span.id(), span.metadata())),
+                |f| {
+                    record(&span.id(), span.metadata(), f);
+                    None
+                },
+            )
         });
     }
 }
