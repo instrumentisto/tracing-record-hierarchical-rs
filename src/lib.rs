@@ -17,10 +17,9 @@
     rust_2018_idioms,
     rustdoc::all,
     trivial_casts,
-    trivial_numeric_casts,
-    unsafe_code
+    trivial_numeric_casts
 )]
-#![forbid(non_ascii_idents)]
+#![forbid(non_ascii_idents, unsafe_code)]
 #![warn(
     clippy::as_conversions,
     clippy::as_ptr_cast_mut,
@@ -145,11 +144,11 @@ mod unused_deps {
     use lazy_static as _;
 }
 
-use std::{any::TypeId, fmt::Display, marker::PhantomData, ptr};
+use std::fmt::Display;
 
 use sealed::sealed;
 use tracing::{self as log, field, span, Dispatch, Metadata, Span, Subscriber};
-use tracing_subscriber::{registry::LookupSpan, Layer, Registry};
+use tracing_subscriber::{registry::LookupSpan, Layer};
 
 /// Extension of a [`tracing::Span`] providing more ergonomic handling of
 /// [`tracing::Span::record`]s.
@@ -198,7 +197,7 @@ impl SpanExt for Span {
 
 /// Records the provided `value` to the `field` of the provided [`Span`] if it
 /// has the one, otherwise tries to record it to its parent [`Span`].
-fn record<Q, V>(span: &Span, field: &Q, value: V, panic: bool)
+fn record<Q, V>(span: &Span, field: &Q, value: V, do_panic: bool)
 where
     Q: field::AsField + Display + ?Sized,
     V: field::Value,
@@ -206,184 +205,110 @@ where
     if span.has_field(field) {
         _ = span.record(field, value);
     } else {
-        record_parent(span, field, value, panic);
+        record_parent(span, field, value, do_panic);
     }
 }
 
 /// Walks up the parents' hierarchy of the provided [`Span`] and tries to record
 /// the provided `value` into the `field` of the first [`Span`] having it, or
 /// the "root" [`Span`] is reached.
-fn record_parent<Q, V>(span: &Span, field: &Q, value: V, panic: bool)
+fn record_parent<Q, V>(span: &Span, field: &Q, value: V, do_panic: bool)
 where
     Q: field::AsField + Display + ?Sized,
     V: field::Value,
 {
     _ = span.with_subscriber(|(id, dispatch)| {
-        let reg = dispatch
-            .downcast_ref::<Registry>()
-            .expect("`tracing::Subscriber` not found");
-        let ctx = dispatch.downcast_ref::<WithContext>().expect(
+        let ctx = dispatch.downcast_ref::<HierarchicalRecord>().expect(
             "add `HierarchicalRecord` `Layer` to your `tracing::Subscriber`",
         );
 
-        if let Some(span) = reg.span(id) {
-            let parent = span.scope().find_map(|parent| {
-                ctx.record_hierarchical(
-                    dispatch,
-                    &parent.id(),
-                    &|parent_id: span::Id, meta: Meta| {
-                        field
-                            .as_field(meta)
-                            .map(|field| (parent_id, meta, field))
-                    },
-                    &|| field.to_string(),
-                    panic,
-                )
-            });
-
-            if let Some((id, meta, field)) = parent {
+        if let Some((id, meta)) = ctx.with_context(
+            dispatch,
+            id,
+            &|meta: Meta| field.as_field(meta),
+            &|id, meta, field| {
                 let value: &dyn field::Value = &value;
                 dispatch.record(
-                    &id,
+                    id,
                     &span::Record::new(
                         &meta.fields().value_set(&[(&field, Some(value))]),
                     ),
                 );
-            }
-        }
+            },
+        ) {
+            // `Span` wants to record a field that has no corresponding parent.
+            // This means that we walked the entire hierarchy of `Span`s to the
+            // root, yet this field did not find it's corresponding `Span`. We
+            // know that, because otherwise the iteration in `record_parent()`
+            // would end, and this function would not be called again anymore,
+            // yet it is. Nothing to do, but report the error.
+
+            log::error!(
+                "`Span(id={id:?}, meta={meta:?})` doesn't have `{field}` field"
+            );
+            assert!(
+                !do_panic,
+                "`Span(id={id:?}, meta={meta:?})` doesn't have `{field}` field"
+            );
+        };
     });
 }
 
 /// Shortcut for a [`tracing::Span`]'s `'static` [`Metadata`].
 type Meta = &'static Metadata<'static>;
 
-/// Shortcut for [`HierarchicalRecord::with_context`]'s callback function
-/// signature.
-type WithContextCallback<'f> =
-    &'f dyn Fn(span::Id, Meta) -> Option<(span::Id, Meta, field::Field)>;
-
 /// Shortcut for a [`HierarchicalRecord::with_context`] method signature.
 type WithContextFn = fn(
     dispatch: &Dispatch,
     id: &span::Id,
-    f: WithContextCallback<'_>,
-    field: &dyn Fn() -> String,
-    panic: bool,
-) -> Option<(span::Id, Meta, field::Field)>;
+    find_field: &dyn Fn(Meta) -> Option<field::Field>,
+    record: &dyn Fn(&span::Id, Meta, field::Field),
+) -> Option<(span::Id, Meta)>;
 
-/// Type-erased [`Layer`]'s context.
-///
-/// This function "remembers" the type of the subscriber, so that we can
-/// downcast to something aware of them without knowing those types at the
-/// call-site.
-#[derive(Debug)]
-struct WithContext(WithContextFn);
+/// [`Layer`] helping [`field`]s to find their corresponding [`Span`] in the
+/// hierarchy of [`Span`]s.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct HierarchicalRecord {
+    /// This function "remembers" the type of the subscriber, so that we can do
+    /// something aware of them without knowing those types at the call-site.
+    with_context: Option<WithContextFn>,
+}
 
-impl WithContext {
+impl HierarchicalRecord {
     /// Allows a function to be called in the context of the "remembered"
     /// subscriber.
-    fn record_hierarchical(
-        &self,
-        dispatch: &Dispatch,
-        id: &span::Id,
-        f: WithContextCallback<'_>,
-        field: &dyn Fn() -> String,
-        panic: bool,
-    ) -> Option<(span::Id, Meta, field::Field)> {
-        (self.0)(dispatch, id, f, field, panic)
-    }
-}
-
-/// [`Layer`] that helps [`field`]s find their corresponding [`Span`] in the
-/// hierarchy of [`Span`]s.
-#[derive(Debug)]
-pub struct HierarchicalRecord<S> {
-    /// Type-erased [`Layer`]'s context.
-    ctx: WithContext,
-
-    /// [`Subscriber`]'s type.
-    _subscriber: PhantomData<fn(S)>,
-}
-
-impl<S> Default for HierarchicalRecord<S>
-where
-    S: for<'span> LookupSpan<'span> + Subscriber,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<S> HierarchicalRecord<S>
-where
-    S: for<'span> LookupSpan<'span> + Subscriber,
-{
-    /// Creates a new [`HierarchicalRecord`].
-    #[must_use]
-    pub fn new() -> Self {
-        Self { ctx: WithContext(Self::with_context), _subscriber: PhantomData }
-    }
-
-    /// Function saved and called by a [`WithContext`] at the call-site.
-    #[allow(clippy::unwrap_in_result)]
     fn with_context(
+        self,
         dispatch: &Dispatch,
         id: &span::Id,
-        f: WithContextCallback<'_>,
-        field: &dyn Fn() -> String,
-        do_panic: bool,
-    ) -> Option<(span::Id, Meta, field::Field)> {
-        let subscriber = dispatch
-            .downcast_ref::<S>()
-            .expect("`tracing::Subscriber` not found");
-        let span = subscriber.span(id).expect("unknown `tracing::Span`");
-
-        #[allow(clippy::option_if_let_else)]
-        if let Some(parent) = span.parent() {
-            f(parent.id(), parent.metadata())
-        } else {
-            // `Span` wants to record a field but has no parents. This means
-            // that we walked the entire hierarchy of `Span`s to the root, yet
-            // this field did not find it's corresponding `Span`. We know that,
-            // because otherwise the iteration in `record_parent()` would end,
-            // and this function would not be called again anymore, yet it is.
-            // Nothing to do, but report the error.
-
-            let meta = span.metadata();
-            let field = field();
-
-            // We log and then panic to avoid situation, when we get double
-            // panic without any info.
-            log::error!(
-                "`Span(id={id:?}, meta={meta:?})` doesn't have `{field}` field"
-            );
-            do_panic.then(|| {
-                panic!(
-                    "`Span(id={id:?}, meta={meta:?})` doesn't have `{field}` \
-                     field",
-                )
-            })
-        }
+        find_field: &dyn Fn(Meta) -> Option<field::Field>,
+        record: &dyn Fn(&span::Id, Meta, field::Field),
+    ) -> Option<(span::Id, Meta)> {
+        (self.with_context?)(dispatch, id, find_field, record)
     }
 }
 
-impl<S> Layer<S> for HierarchicalRecord<S>
+impl<S> Layer<S> for HierarchicalRecord
 where
     S: for<'span> LookupSpan<'span> + Subscriber,
 {
-    // SAFETY: This is safe because the `WithContext` function pointer is valid
-    //         for the lifetime of `&self`.
-    #[allow(unsafe_code)]
-    unsafe fn downcast_raw(&self, id: TypeId) -> Option<*const ()> {
-        match id {
-            id if id == TypeId::of::<Self>() => {
-                Some(ptr::addr_of!(self).cast::<()>())
+    fn on_layer(&mut self, _: &mut S) {
+        self.with_context = Some(|dispatch, id, find_field, record| {
+            let subscriber = dispatch.downcast_ref::<S>()?;
+            let span = subscriber.span(id)?;
+
+            let field = span.parent().and_then(|parent| {
+                parent.scope().find_map(|s| find_field(s.metadata()))
+            });
+
+            #[allow(clippy::option_if_let_else)]
+            if let Some(field) = field {
+                record(&span.id(), span.metadata(), field);
+                None
+            } else {
+                Some((span.id(), span.metadata()))
             }
-            id if id == TypeId::of::<WithContext>() => {
-                Some(ptr::addr_of!(self.ctx).cast::<()>())
-            }
-            _ => None,
-        }
+        });
     }
 }
 
@@ -395,7 +320,7 @@ mod spec {
         use tracing_subscriber::layer::SubscriberExt as _;
 
         tracing::subscriber::with_default(
-            tracing_subscriber::registry().with(HierarchicalRecord::new()),
+            tracing_subscriber::registry().with(HierarchicalRecord::default()),
             f,
         );
     }
@@ -489,6 +414,16 @@ mod spec {
                     _ = Span::current()
                         .must_record_hierarchical("field", "value");
                 });
+            });
+        });
+    }
+
+    #[test]
+    #[should_panic = "doesn't have `field` field"]
+    fn must_panics_on_missing_field_and_no_parents() {
+        with_subscriber(|| {
+            tracing::info_span!("child").in_scope(|| {
+                _ = Span::current().must_record_hierarchical("field", "value");
             });
         });
     }

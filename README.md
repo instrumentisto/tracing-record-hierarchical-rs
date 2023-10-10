@@ -3,6 +3,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/tracing-record-hierarchical.svg "crates.io")](https://crates.io/crates/tracing-record-hierarchical)
 [![Rust 1.70+](https://img.shields.io/badge/rustc-1.70+-lightgray.svg "Rust 1.70+")](https://blog.rust-lang.org/2023/06/01/Rust-1.70.0.html)
+[![Unsafe Forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg "Unsafe forbidden")](https://github.com/rust-secure-code/safety-dance)
 [![CI](https://github.com/instrumentisto/tracing-record-hierarchical-rs/workflows/CI/badge.svg?branch=main "CI")](https://github.com/instrumentisto/tracing-record-hierarchical-rs/actions?query=workflow%3ACI+branch%3Amain)
 [![Rust docs](https://docs.rs/tracing-record-hierarchical/badge.svg "Rust docs")](https://docs.rs/tracing-record-hierarchical)
 
@@ -32,7 +33,7 @@ Dealing with the complex relationship in the hierarchy of nested [`Span`]s in [`
    Which doesn't work when:
    - There is another "layer" of [`Span`]s between them;
    - The value that needs to be recorded is computed in the function (you may still be able to work around by returning from `in_scope` closure);
-   - The parent [`Span`] in question, or in another crate you have no control of.
+   - The parent [`Span`] is in another crate you have no control of.
 
 2. Bringing the parent [`Span`] to the child:
    ```rust
@@ -72,7 +73,7 @@ use tracing_record_hierarchical::HierarchicalRecord;
 
 fn init_tracing() {
     tracing_subscriber::registry()
-        .with(HierarchicalRecord::new())
+        .with(HierarchicalRecord::default())
         .init();
 }
 ```
@@ -101,7 +102,7 @@ fn bar() {
 #     use tracing_subscriber::prelude::*;
 #     use tracing_record_hierarchical::HierarchicalRecord;
 # 
-#     tracing_subscriber::registry().with(HierarchicalRecord::new()).init();
+#     tracing_subscriber::registry().with(HierarchicalRecord::default()).init();
 # 
 #     foo();
 # }
