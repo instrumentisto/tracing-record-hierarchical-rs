@@ -265,7 +265,7 @@ type WithContextFn = fn(
     record: &dyn Fn(&span::Id, Meta, field::Field),
 ) -> Option<(span::Id, Meta)>;
 
-/// [`Layer`] that helps [`field`]s find their corresponding [`Span`] in the
+/// [`Layer`] helping [`field`]s to find their corresponding [`Span`] in the
 /// hierarchy of [`Span`]s.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HierarchicalRecord {

@@ -3,6 +3,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/tracing-record-hierarchical.svg "crates.io")](https://crates.io/crates/tracing-record-hierarchical)
 [![Rust 1.70+](https://img.shields.io/badge/rustc-1.70+-lightgray.svg "Rust 1.70+")](https://blog.rust-lang.org/2023/06/01/Rust-1.70.0.html)
+[![Unsafe Forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg "Unsafe forbidden")](https://github.com/rust-secure-code/safety-dance)
 [![CI](https://github.com/instrumentisto/tracing-record-hierarchical-rs/workflows/CI/badge.svg?branch=main "CI")](https://github.com/instrumentisto/tracing-record-hierarchical-rs/actions?query=workflow%3ACI+branch%3Amain)
 [![Rust docs](https://docs.rs/tracing-record-hierarchical/badge.svg "Rust docs")](https://docs.rs/tracing-record-hierarchical)
 
