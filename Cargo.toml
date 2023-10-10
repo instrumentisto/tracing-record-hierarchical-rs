@@ -10,8 +10,8 @@ documentation = "https://docs.rs/tracing-record-hierarchical"
 homepage = "https://github.com/instrumentisto/tracing-record-hierarchical-rs"
 repository = "https://github.com/instrumentisto/tracing-record-hierarchical-ts"
 readme = "README.md"
-#keywords = ["tracing", "span", "parent", "record", "subscriber"]
-#categories = ["development-tools::debugging", "development-tools::profiling"]
+keywords = ["parent", "record", "span", "subscriber", "tracing"]
+categories = ["development-tools::debugging", "development-tools::profiling"]
 include = ["/src/", "/Cargo.toml", "/CHANGELOG.md", "/LICENSE-APACHE", "/LICENSE-MIT", "/README.md"]
 
 [package.metadata.docs.rs]
