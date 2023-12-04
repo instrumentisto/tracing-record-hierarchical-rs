@@ -1,6 +1,6 @@
 [package]
 name = "tracing-record-hierarchical"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.70"
 description = "Record parent `tracing::Span` fields from inside child `tracing::Span`'s context."
@@ -8,7 +8,7 @@ authors = ["Instrumentisto Team <developer@instrumentisto.com>"]
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/tracing-record-hierarchical"
 homepage = "https://github.com/instrumentisto/tracing-record-hierarchical-rs"
-repository = "https://github.com/instrumentisto/tracing-record-hierarchical-ts"
+repository = "https://github.com/instrumentisto/tracing-record-hierarchical-rs"
 readme = "README.md"
 keywords = ["parent", "record", "span", "subscriber", "tracing"]
 categories = ["development-tools::debugging", "development-tools::profiling"]

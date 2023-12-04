@@ -273,7 +273,7 @@ type WithContextFn = fn(
 
 /// [`Layer`] helping [`field`]s to find their corresponding [`Span`] in the
 /// hierarchy of [`Span`]s.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct HierarchicalRecord {
     /// This function "remembers" the type of the subscriber, so that we can do
     /// something aware of them without knowing those types at the call-site.
@@ -303,14 +303,18 @@ where
             let subscriber = dispatch.downcast_ref::<S>()?;
             let span = subscriber.span(id)?;
 
-            let field = span.parent().and_then(|parent| {
-                parent.scope().find_map(|s| find_field(s.metadata()))
+            let parent = span.parent().and_then(|parent| {
+                parent.scope().find_map(|s| {
+                    let meta = s.metadata();
+                    let field = find_field(meta)?;
+                    Some((s.id(), meta, field))
+                })
             });
 
-            field.map_or_else(
+            parent.map_or_else(
                 || Some((span.id(), span.metadata())),
-                |f| {
-                    record(&span.id(), span.metadata(), f);
+                |(parent_id, parent_meta, parent_field)| {
+                    record(&parent_id, parent_meta, parent_field);
                     None
                 },
             )
@@ -320,21 +324,22 @@ where
 
 #[cfg(test)]
 mod spec {
-    use super::*;
+    use std::{collections::HashMap, fmt::Debug};
 
-    fn with_subscriber(f: impl FnOnce()) {
-        use tracing_subscriber::layer::SubscriberExt as _;
+    use tracing::{
+        field::{self, Visit},
+        span, Dispatch, Span, Subscriber,
+    };
+    use tracing_subscriber::{layer, registry::LookupSpan, Layer};
 
-        tracing::subscriber::with_default(
-            tracing_subscriber::registry().with(HierarchicalRecord::default()),
-            f,
-        );
-    }
+    use super::{HierarchicalRecord, SpanExt as _};
 
     #[test]
     fn does_nothing_if_not_in_span() {
         with_subscriber(|| {
             _ = Span::current().must_record_hierarchical("field", "value");
+
+            assert_eq!(try_current("field").as_deref(), None);
         });
     }
 
@@ -346,6 +351,11 @@ mod spec {
                     tracing::info_span!("child").in_scope(|| {
                         _ = Span::current()
                             .record_hierarchical("field", "value");
+
+                        assert_eq!(
+                            try_current("field").as_deref(),
+                            Some("value"),
+                        );
                     });
                 },
             );
@@ -360,6 +370,11 @@ mod spec {
                     tracing::info_span!("child").in_scope(|| {
                         _ = Span::current()
                             .must_record_hierarchical("field", "value");
+
+                        assert_eq!(
+                            try_current("field").as_deref(),
+                            Some("value"),
+                        );
                     });
                 },
             );
@@ -376,6 +391,11 @@ mod spec {
                             tracing::info_span!("child").in_scope(|| {
                                 _ = Span::current()
                                     .must_record_hierarchical("field", "value");
+
+                                assert_eq!(
+                                    try_current("field").as_deref(),
+                                    Some("value"),
+                                );
                             });
                         });
                     });
@@ -393,6 +413,11 @@ mod spec {
                             tracing::info_span!("child").in_scope(|| {
                                 _ = Span::current()
                                     .must_record_hierarchical("field", "value");
+
+                                assert_eq!(
+                                    try_current("field").as_deref(),
+                                    Some("value"),
+                                );
                             });
                         });
                     });
@@ -406,6 +431,9 @@ mod spec {
             tracing::info_span!("parent", abc = field::Empty).in_scope(|| {
                 tracing::info_span!("child").in_scope(|| {
                     _ = Span::current().record_hierarchical("field", "value");
+
+                    assert_eq!(try_current("field").as_deref(), None);
+                    assert_eq!(try_current("abc").as_deref(), None);
                 });
             });
         });
@@ -445,5 +473,151 @@ mod spec {
                 _ = Span::current().must_record_hierarchical("field", "value");
             });
         });
+    }
+
+    /// Wraps the provided function into a [`Subscriber`] for tests.
+    fn with_subscriber(f: impl FnOnce()) {
+        use tracing_subscriber::layer::SubscriberExt as _;
+
+        tracing::subscriber::with_default(
+            tracing_subscriber::registry()
+                .with(HierarchicalRecord::default())
+                .with(FieldValueRecorder {
+                    current_field_value: None,
+                    lookup: &["field"],
+                }),
+            f,
+        );
+    }
+
+    /// Tries to extract the specified field's value from the current [`Span`].
+    fn try_current(name: &'static str) -> Option<String> {
+        Span::current()
+            .with_subscriber(|(id, dispatch)| {
+                dispatch
+                    .downcast_ref::<FieldValueRecorder>()?
+                    .current_field_value(dispatch, id, name)
+            })
+            .flatten()
+    }
+
+    /// Shortcut for a [`FieldValueRecorder::current_field_value()`] method
+    /// signature.
+    type CurrentFieldValueFn = fn(
+        dispatch: &Dispatch,
+        id: &span::Id,
+        key: &'static str,
+    ) -> Option<String>;
+
+    /// Shortcut for a list of field names to lookup from a [`Span`].
+    type Lookup = &'static [&'static str];
+
+    /// Helper [`Layer`] for field recording, which records [`Span`] fields in
+    /// [`Extensions`] to be retrieved back using the [`try_current()`]
+    /// function.
+    ///
+    /// [`Extensions`]: tracing_subscriber::registry::Extensions
+    #[derive(Clone, Copy, Debug)]
+    struct FieldValueRecorder {
+        /// Function remembering the type of the subscriber, allowing us to do
+        /// something aware of them without knowing those types at the
+        /// call-site.
+        current_field_value: Option<CurrentFieldValueFn>,
+
+        /// Field names to extract from a [`Span`].
+        lookup: Lookup,
+    }
+
+    impl FieldValueRecorder {
+        /// Allows a function to be called in the context of the "remembered"
+        /// subscriber.
+        fn current_field_value(
+            self,
+            dispatch: &Dispatch,
+            id: &span::Id,
+            key: &'static str,
+        ) -> Option<String> {
+            (self.current_field_value?)(dispatch, id, key)
+        }
+    }
+
+    impl<S> Layer<S> for FieldValueRecorder
+    where
+        S: for<'span> LookupSpan<'span> + Subscriber,
+    {
+        fn on_layer(&mut self, _: &mut S) {
+            self.current_field_value = Some(|dispatch, id, key| {
+                let sub = dispatch.downcast_ref::<S>()?;
+                let span = sub.span(id)?;
+
+                span.scope().find_map(|span| {
+                    let ext = span.extensions();
+                    let Fields(field) = ext.get::<Fields>()?;
+                    Some(field.get(key)?.clone().into())
+                })
+            });
+        }
+
+        fn on_new_span(
+            &self,
+            attrs: &span::Attributes<'_>,
+            id: &span::Id,
+            ctx: layer::Context<'_, S>,
+        ) {
+            if let Some(span) = ctx.span(id) {
+                let fields = Fields::from_record(
+                    &span::Record::new(attrs.values()),
+                    self.lookup,
+                );
+                span.extensions_mut().insert(fields);
+            }
+        }
+
+        fn on_record(
+            &self,
+            id: &span::Id,
+            values: &span::Record<'_>,
+            ctx: layer::Context<'_, S>,
+        ) {
+            if let Some(span) = ctx.span(id) {
+                let new_fields = Fields::from_record(values, self.lookup);
+                if let Some(fields) = span.extensions_mut().get_mut::<Fields>()
+                {
+                    for (k, v) in &new_fields.0 {
+                        drop(fields.0.insert(k, v.clone()));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Values of [`Span`] fields along with their names.
+    #[derive(Clone, Debug, Default)]
+    struct Fields(HashMap<&'static str, String>);
+
+    impl Fields {
+        /// Extracts [`Fields`] from the provided [`span::Record`].
+        fn from_record(record: &span::Record<'_>, lookup: Lookup) -> Self {
+            #[derive(Debug)]
+            struct Visitor {
+                fields: Fields,
+                lookup: Lookup,
+            }
+
+            impl Visit for Visitor {
+                fn record_debug(&mut self, _: &field::Field, _: &dyn Debug) {}
+
+                fn record_str(&mut self, field: &field::Field, value: &str) {
+                    let key = field.name();
+                    if self.lookup.contains(&key) {
+                        drop(self.fields.0.insert(key, value.into()));
+                    }
+                }
+            }
+
+            let mut visitor = Visitor { fields: Fields::default(), lookup };
+            record.record(&mut visitor);
+            visitor.fields
+        }
     }
 }
