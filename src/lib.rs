@@ -273,7 +273,7 @@ type WithContextFn = fn(
 
 /// [`Layer`] helping [`field`]s to find their corresponding [`Span`] in the
 /// hierarchy of [`Span`]s.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct HierarchicalRecord {
     /// This function "remembers" the type of the subscriber, so that we can do
     /// something aware of them without knowing those types at the call-site.
@@ -332,10 +332,165 @@ mod spec {
     };
     use tracing_subscriber::{layer, registry::LookupSpan, Layer};
 
-    use super::*;
+    use super::{HierarchicalRecord, SpanExt as _};
 
-    /// Get current [`Span`] field's value.
-    #[must_use]
+    #[test]
+    fn does_nothing_if_not_in_span() {
+        with_subscriber(|| {
+            _ = Span::current().must_record_hierarchical("field", "value");
+
+            assert_eq!(try_current("field").as_deref(), None);
+        });
+    }
+
+    #[test]
+    fn records_into_parent_span() {
+        with_subscriber(|| {
+            tracing::info_span!("parent", field = field::Empty).in_scope(
+                || {
+                    tracing::info_span!("child").in_scope(|| {
+                        _ = Span::current()
+                            .record_hierarchical("field", "value");
+
+                        assert_eq!(
+                            try_current("field").as_deref(),
+                            Some("value"),
+                        );
+                    });
+                },
+            );
+        });
+    }
+
+    #[test]
+    fn must_records_into_parent_span() {
+        with_subscriber(|| {
+            tracing::info_span!("parent", field = field::Empty).in_scope(
+                || {
+                    tracing::info_span!("child").in_scope(|| {
+                        _ = Span::current()
+                            .must_record_hierarchical("field", "value");
+
+                        assert_eq!(
+                            try_current("field").as_deref(),
+                            Some("value"),
+                        );
+                    });
+                },
+            );
+        });
+    }
+
+    #[test]
+    fn must_records_into_toplevel_parent_span() {
+        with_subscriber(|| {
+            tracing::info_span!("grand-grandparent", field = field::Empty)
+                .in_scope(|| {
+                    tracing::info_span!("grandparent").in_scope(|| {
+                        tracing::info_span!("parent").in_scope(|| {
+                            tracing::info_span!("child").in_scope(|| {
+                                _ = Span::current()
+                                    .must_record_hierarchical("field", "value");
+
+                                assert_eq!(
+                                    try_current("field").as_deref(),
+                                    Some("value"),
+                                );
+                            });
+                        });
+                    });
+                });
+        });
+    }
+
+    #[test]
+    fn must_records_into_intermediate_parent_span() {
+        with_subscriber(|| {
+            tracing::info_span!("grand-grandparent").in_scope(|| {
+                tracing::info_span!("grandparent", field = field::Empty)
+                    .in_scope(|| {
+                        tracing::info_span!("parent").in_scope(|| {
+                            tracing::info_span!("child").in_scope(|| {
+                                _ = Span::current()
+                                    .must_record_hierarchical("field", "value");
+
+                                assert_eq!(
+                                    try_current("field").as_deref(),
+                                    Some("value"),
+                                );
+                            });
+                        });
+                    });
+            });
+        });
+    }
+
+    #[test]
+    fn no_panic_on_missing_field() {
+        with_subscriber(|| {
+            tracing::info_span!("parent", abc = field::Empty).in_scope(|| {
+                tracing::info_span!("child").in_scope(|| {
+                    _ = Span::current().record_hierarchical("field", "value");
+
+                    assert_eq!(try_current("field").as_deref(), None);
+                    assert_eq!(try_current("abc").as_deref(), None);
+                });
+            });
+        });
+    }
+
+    #[test]
+    #[should_panic = "doesn't have `field` field"]
+    fn must_panics_on_missing_field() {
+        with_subscriber(|| {
+            tracing::info_span!("parent", abc = field::Empty).in_scope(|| {
+                tracing::info_span!("child").in_scope(|| {
+                    _ = Span::current()
+                        .must_record_hierarchical("field", "value");
+                });
+            });
+        });
+    }
+
+    #[test]
+    #[should_panic = "doesn't have `field` field"]
+    fn must_panics_on_missing_field_and_no_parents() {
+        with_subscriber(|| {
+            tracing::info_span!("child").in_scope(|| {
+                _ = Span::current().must_record_hierarchical("field", "value");
+            });
+        });
+    }
+
+    #[test]
+    #[should_panic = "add `HierarchicalRecord` `Layer` to your \
+                      `tracing::Subscriber`"]
+    fn panics_when_no_layer() {
+        let subscriber = tracing_subscriber::registry();
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info_span!("parent", abc = field::Empty).in_scope(|| {
+                _ = Span::current().must_record_hierarchical("field", "value");
+            });
+        });
+    }
+
+    /// Wraps the provided function into a [`Subscriber`] for tests.
+    fn with_subscriber(f: impl FnOnce()) {
+        use tracing_subscriber::layer::SubscriberExt as _;
+
+        tracing::subscriber::with_default(
+            tracing_subscriber::registry()
+                .with(HierarchicalRecord::default())
+                .with(FieldValueRecorder {
+                    current_field_value: None,
+                    lookup: &["field"],
+                }),
+            f,
+        );
+    }
+
+    /// Tries to extract the specified field's value from the current [`Span`].
     fn try_current(name: &'static str) -> Option<String> {
         Span::current()
             .with_subscriber(|(id, dispatch)| {
@@ -346,7 +501,7 @@ mod spec {
             .flatten()
     }
 
-    /// Shortcut for a [`FieldValueRecorder::current_field_value`] method
+    /// Shortcut for a [`FieldValueRecorder::current_field_value()`] method
     /// signature.
     type CurrentFieldValueFn = fn(
         dispatch: &Dispatch,
@@ -354,13 +509,12 @@ mod spec {
         key: &'static str,
     ) -> Option<String>;
 
-    /// Shortcut for a list of field names to lookup from [`Span`].
+    /// Shortcut for a list of field names to lookup from a [`Span`].
     type Lookup = &'static [&'static str];
 
-    /// Helper [`Layer`] to field recording.
-    ///
-    /// Records [`Span`] fields in [`Extensions`] to be retrieved back using
-    /// [`try_current`] function.
+    /// Helper [`Layer`] for field recording, which records [`Span`] fields in
+    /// [`Extensions`] to be retrieved back using the [`try_current()`]
+    /// function.
     ///
     /// [`Extensions`]: tracing_subscriber::registry::Extensions
     #[derive(Clone, Copy, Debug)]
@@ -370,7 +524,7 @@ mod spec {
         /// call-site.
         current_field_value: Option<CurrentFieldValueFn>,
 
-        /// Field names to extract from the [`Span`].
+        /// Field names to extract from a [`Span`].
         lookup: Lookup,
     }
 
@@ -465,154 +619,5 @@ mod spec {
             record.record(&mut visitor);
             visitor.fields
         }
-    }
-
-    fn with_subscriber(f: impl FnOnce()) {
-        use tracing_subscriber::layer::SubscriberExt as _;
-
-        tracing::subscriber::with_default(
-            tracing_subscriber::registry()
-                .with(HierarchicalRecord::default())
-                .with(FieldValueRecorder {
-                    current_field_value: None,
-                    lookup: &["field"],
-                }),
-            f,
-        );
-    }
-
-    #[test]
-    fn does_nothing_if_not_in_span() {
-        with_subscriber(|| {
-            _ = Span::current().must_record_hierarchical("field", "value");
-            assert_eq!(try_current("field").as_deref(), None);
-        });
-    }
-
-    #[test]
-    fn records_into_parent_span() {
-        with_subscriber(|| {
-            tracing::info_span!("parent", field = field::Empty).in_scope(
-                || {
-                    tracing::info_span!("child").in_scope(|| {
-                        _ = Span::current()
-                            .record_hierarchical("field", "value");
-                        assert_eq!(
-                            try_current("field").as_deref(),
-                            Some("value")
-                        );
-                    });
-                },
-            );
-        });
-    }
-
-    #[test]
-    fn must_records_into_parent_span() {
-        with_subscriber(|| {
-            tracing::info_span!("parent", field = field::Empty).in_scope(
-                || {
-                    tracing::info_span!("child").in_scope(|| {
-                        _ = Span::current()
-                            .must_record_hierarchical("field", "value");
-                        assert_eq!(
-                            try_current("field").as_deref(),
-                            Some("value")
-                        );
-                    });
-                },
-            );
-        });
-    }
-
-    #[test]
-    fn must_records_into_toplevel_parent_span() {
-        with_subscriber(|| {
-            tracing::info_span!("grand-grandparent", field = field::Empty)
-                .in_scope(|| {
-                    tracing::info_span!("grandparent").in_scope(|| {
-                        tracing::info_span!("parent").in_scope(|| {
-                            tracing::info_span!("child").in_scope(|| {
-                                _ = Span::current()
-                                    .must_record_hierarchical("field", "value");
-                                assert_eq!(
-                                    try_current("field").as_deref(),
-                                    Some("value")
-                                );
-                            });
-                        });
-                    });
-                });
-        });
-    }
-
-    #[test]
-    fn must_records_into_intermediate_parent_span() {
-        with_subscriber(|| {
-            tracing::info_span!("grand-grandparent").in_scope(|| {
-                tracing::info_span!("grandparent", field = field::Empty)
-                    .in_scope(|| {
-                        tracing::info_span!("parent").in_scope(|| {
-                            tracing::info_span!("child").in_scope(|| {
-                                _ = Span::current()
-                                    .must_record_hierarchical("field", "value");
-                                assert_eq!(
-                                    try_current("field").as_deref(),
-                                    Some("value")
-                                );
-                            });
-                        });
-                    });
-            });
-        });
-    }
-
-    #[test]
-    fn no_panic_on_missing_field() {
-        with_subscriber(|| {
-            tracing::info_span!("parent", abc = field::Empty).in_scope(|| {
-                tracing::info_span!("child").in_scope(|| {
-                    _ = Span::current().record_hierarchical("field", "value");
-                    assert_eq!(try_current("field").as_deref(), None);
-                    assert_eq!(try_current("abc").as_deref(), None);
-                });
-            });
-        });
-    }
-
-    #[test]
-    #[should_panic = "doesn't have `field` field"]
-    fn must_panics_on_missing_field() {
-        with_subscriber(|| {
-            tracing::info_span!("parent", abc = field::Empty).in_scope(|| {
-                tracing::info_span!("child").in_scope(|| {
-                    _ = Span::current()
-                        .must_record_hierarchical("field", "value");
-                });
-            });
-        });
-    }
-
-    #[test]
-    #[should_panic = "doesn't have `field` field"]
-    fn must_panics_on_missing_field_and_no_parents() {
-        with_subscriber(|| {
-            tracing::info_span!("child").in_scope(|| {
-                _ = Span::current().must_record_hierarchical("field", "value");
-            });
-        });
-    }
-
-    #[test]
-    #[should_panic = "add `HierarchicalRecord` `Layer` to your \
-                      `tracing::Subscriber`"]
-    fn panics_when_no_layer() {
-        let subscriber = tracing_subscriber::registry();
-
-        tracing::subscriber::with_default(subscriber, || {
-            tracing::info_span!("parent", abc = field::Empty).in_scope(|| {
-                _ = Span::current().must_record_hierarchical("field", "value");
-            });
-        });
     }
 }
