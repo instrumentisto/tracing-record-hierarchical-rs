@@ -113,7 +113,7 @@ fn bar() {
 
 ## License
 
-Copyright © 2023 Instrumentisto Team, <https://github.com/instrumentisto>
+Copyright © 2023-2024 Instrumentisto Team, <https://github.com/instrumentisto>
 
 Licensed under either of [Apache License, Version 2.0][APACHE] or [MIT license][MIT] at your option.
 
