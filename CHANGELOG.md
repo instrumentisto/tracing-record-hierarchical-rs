@@ -6,6 +6,20 @@ All user visible changes to this project will be documented in this file. This p
 
 
 
+## [0.2.0] · 202?-??-?? (unreleased)
+[0.2.0]: /../../tree/v0.2.0
+
+[Diff](/../../compare/v0.1.1...v0.2.0)
+
+### BC Breaks
+
+- Bumped up [MSRV] to 1.81 because for `#[expect]` attribute usage. ([todo])
+
+[todo]: /../../commit/todo
+
+
+
+
 ## [0.1.1] · 2023-12-04
 [0.1.1]: /../../tree/v0.1.1
 
@@ -33,4 +47,5 @@ All user visible changes to this project will be documented in this file. This p
 
 
 
+[MSRV]: https://doc.rust-lang.org/cargo/reference/manifest.html#the-rust-version-field
 [Semantic Versioning 2.0.0]: https://semver.org
