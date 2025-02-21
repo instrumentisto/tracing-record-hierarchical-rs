@@ -1,8 +1,8 @@
 [package]
 name = "tracing-record-hierarchical"
 version = "0.1.1"
-edition = "2021"
-rust-version = "1.81"
+edition = "2024"
+rust-version = "1.85"
 description = "Record parent `tracing::Span` fields from inside child `tracing::Span`'s context."
 authors = ["Instrumentisto Team <developer@instrumentisto.com>"]
 license = "MIT OR Apache-2.0"
@@ -21,9 +21,6 @@ rustdoc-args = ["--generate-link-to-definition"]
 sealed = "0.6"
 tracing = { version = "0.1.37", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
-
-# Not realy used, for surviving MSRV check only.
-lazy_static = "1.1"
 
 [dev-dependencies]
 tracing = { version = "0.1", features = ["attributes", "std"], default-features = false }
