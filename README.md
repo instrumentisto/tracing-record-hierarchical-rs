@@ -90,10 +90,10 @@ fn foo() {
 #[tracing::instrument]
 fn bar() {
     tracing::Span::current()
-        // This walks up the hierarchy of `Span`s from the `span` the method 
-        // was called on (`current()` in this example) to the "root" `Span`. 
-        // If some `Span` in the hierarchy has the `foo` field, the provided 
-        // value will be recorded there. If none of the `Span`s in the 
+        // This walks up the hierarchy of `Span`s from the `span` the method
+        // was called on (`current()` in this example) to the "root" `Span`.
+        // If some `Span` in the hierarchy has the `foo` field, the provided
+        // value will be recorded there. If none of the `Span`s in the
         // hierarchy has this field, a panic will occur.
         .must_record_hierarchical("foo", 42);
 }
@@ -101,9 +101,9 @@ fn bar() {
 # fn main() {
 #     use tracing_subscriber::prelude::*;
 #     use tracing_record_hierarchical::HierarchicalRecord;
-# 
+#
 #     tracing_subscriber::registry().with(HierarchicalRecord::default()).init();
-# 
+#
 #     foo();
 # }
 ```
@@ -113,7 +113,7 @@ fn bar() {
 
 ## License
 
-Copyright © 2023-2025 Instrumentisto Team, <https://github.com/instrumentisto>
+Copyright © 2023-2026 Instrumentisto Team, <https://github.com/instrumentisto>
 
 Licensed under either of [Apache License, Version 2.0][APACHE] or [MIT license][MIT] at your option.
 
