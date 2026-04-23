@@ -1,6 +1,6 @@
 [package]
 name = "tracing-record-hierarchical"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Record parent `tracing::Span` fields from inside child `tracing::Span`'s context."

@@ -7,8 +7,8 @@
 [![CI](https://github.com/tyranron/tracing-record-hierarchical-rs/actions/workflows/ci.yml/badge.svg?branch=main "CI")](https://github.com/tyranron/tracing-record-hierarchical-rs/actions?query=workflow%3ACI+branch%3Amain)
 [![Rust docs](https://docs.rs/tracing-record-hierarchical/badge.svg "Rust docs")](https://docs.rs/tracing-record-hierarchical)
 
-[API Docs](https://docs.rs/tracing-record-hierarchical) |
-[Changelog](https://github.com/tyranron/tracing-record-hierarchical-rs/blob/main/CHANGELOG.md)
+[API Docs](https://docs.rs/tracing-record-hierarchical/0.2.0) |
+[Changelog](https://github.com/tyranron/tracing-record-hierarchical-rs/blob/v0.2.0/CHANGELOG.md)
 
 Record parent [`tracing::Span`] fields from inside child [`tracing::Span`]'s context.
 
@@ -134,5 +134,5 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
 [`tracing::Span`]: https://docs.rs/tracing/latest/tracing/struct.Span.html
 [subscriber]: https://docs.rs/tracing/latest/tracing#subscribers
 
-[APACHE]: https://github.com/tyranron/tracing-record-hierarchical-rs/blob/main/LICENSE-APACHE
-[MIT]: https://github.com/tyranron/tracing-record-hierarchical-rs/blob/main/LICENSE-MIT
+[APACHE]: https://github.com/tyranron/tracing-record-hierarchical-rs/blob/v0.2.0/LICENSE-APACHE
+[MIT]: https://github.com/tyranron/tracing-record-hierarchical-rs/blob/v0.2.0/LICENSE-MIT
