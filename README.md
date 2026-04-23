@@ -4,11 +4,11 @@
 [![crates.io](https://img.shields.io/crates/v/tracing-record-hierarchical.svg "crates.io")](https://crates.io/crates/tracing-record-hierarchical)
 [![Rust 1.85+](https://img.shields.io/badge/rustc-1.85+-lightgray.svg "Rust 1.85+")](https://blog.rust-lang.org/2025/02/20/Rust-1.85.0.html)
 [![Unsafe Forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg "Unsafe forbidden")](https://github.com/rust-secure-code/safety-dance)\
-[![CI](https://github.com/instrumentisto/tracing-record-hierarchical-rs/actions/workflows/ci.yml/badge.svg?branch=main "CI")](https://github.com/instrumentisto/tracing-record-hierarchical-rs/actions?query=workflow%3ACI+branch%3Amain)
+[![CI](https://github.com/tyranron/tracing-record-hierarchical-rs/actions/workflows/ci.yml/badge.svg?branch=main "CI")](https://github.com/tyranron/tracing-record-hierarchical-rs/actions?query=workflow%3ACI+branch%3Amain)
 [![Rust docs](https://docs.rs/tracing-record-hierarchical/badge.svg "Rust docs")](https://docs.rs/tracing-record-hierarchical)
 
 [API Docs](https://docs.rs/tracing-record-hierarchical) |
-[Changelog](https://github.com/instrumentisto/tracing-record-hierarchical-rs/blob/main/CHANGELOG.md)
+[Changelog](https://github.com/tyranron/tracing-record-hierarchical-rs/blob/main/CHANGELOG.md)
 
 Record parent [`tracing::Span`] fields from inside child [`tracing::Span`]'s context.
 
@@ -114,6 +114,7 @@ fn bar() {
 ## License
 
 Copyright © 2023-2026 Instrumentisto Team, <https://github.com/instrumentisto>
+Copyright © 2026 Kai Ren, <https://github.com/tyranron>
 
 Licensed under either of [Apache License, Version 2.0][APACHE] or [MIT license][MIT] at your option.
 
@@ -133,5 +134,5 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
 [`tracing::Span`]: https://docs.rs/tracing/latest/tracing/struct.Span.html
 [subscriber]: https://docs.rs/tracing/latest/tracing#subscribers
 
-[APACHE]: https://github.com/instrumentisto/tracing-record-hierarchical-rs/blob/main/LICENSE-APACHE
-[MIT]: https://github.com/instrumentisto/tracing-record-hierarchical-rs/blob/main/LICENSE-MIT
+[APACHE]: https://github.com/tyranron/tracing-record-hierarchical-rs/blob/main/LICENSE-APACHE
+[MIT]: https://github.com/tyranron/tracing-record-hierarchical-rs/blob/main/LICENSE-MIT
